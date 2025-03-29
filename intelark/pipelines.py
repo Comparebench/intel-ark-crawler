@@ -57,7 +57,7 @@ class IntelarkPipeline(object):
 
         elif isinstance(item, CPUSpecsUnknownItem):
             # path for saving
-            fpath = os.path.abspath(os.path.join(basepath, "_unknown", item["Essentials"]["MarketSegment"]))
+            fpath = os.path.abspath(os.path.join(basepath, "_unknown", item["Essentials"]["Vertical Segment"]))
             self.create_path(fpath)
             fullpath = os.path.join(fpath, fname)
 

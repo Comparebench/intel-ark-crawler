@@ -47,6 +47,8 @@ skipIfKey = [
     "Product Brief",
     "Additional Information URL",
     "Datasheet",
+    "Product Collection",
+    "Code Name",
 ]
 
 
@@ -57,10 +59,12 @@ class BaseSpider(scrapy.Spider):
 
     allowed_domains = [
         'ark.intel.com',
+        'www.intel.com',
     ]
 
     start_urls = [
         'https://ark.intel.com/content/www/us/en/ark.html',
+        'https://www.intel.com/content/www/us/en/ark.html',
     ]
 
     def parse(self, response: scrapy.http.Response):
@@ -98,15 +102,10 @@ class BaseSpider(scrapy.Spider):
         """
         Get specifications of one CPU
         """
-
-        # Find Products Home > Product Specifications > Processors breadcrumb
-        if response.xpath("//a[contains(@class, 'hidden-crumb-xs')]/text()").get().strip() != "Processors":
-            raise scrapy.exceptions.CloseSpider("Processors not found in crumb")
-
         # Get Intel Ark internal CPU id from URL
         arkcpuid = int(urlsplit(response.url).path.strip('/').split('/')[6])
 
-        cpuname = response.xpath("//div/h1/text()").get()
+        cpuname = response.xpath("//div[contains(@class, 'current-page')]/span/text()").get()
         cpuname = self.cleantxt(cpuname)
 
         specs = {
@@ -120,31 +119,29 @@ class BaseSpider(scrapy.Spider):
         # "GraphicsMaxFreq": "Graphics Max Dynamic Frequency"
         legends = {}
 
-        for section in response.xpath("//div[@class='arkProductSpecifications']/div/section/div"):
-            header = section.xpath("div/h2/text()").get()
+        for section in response.xpath("//div[@data-target='processors-specifications']/div"):
+            if section.xpath("a/text()").get() == 'Download Specifications':
+                continue
+            header = section.xpath("div[contains(@class, 'heading-row')]/div/h3/text()").get()
             if header not in specs:
                 # Add header
                 specs[header] = {}
                 legends[header] = {}
-
-            for data in section.xpath("ul[@class='specs-list']/li"):
+            # section.xpath("div[@class='tech-section']")
+            for data in section.xpath("div[contains(@class, 'tech-section-row')]"):
                 # Find specifications under each header
 
                 # Get key, such as "ECC Memory Supported"
-                k = data.xpath("span[@class='value']/@data-key").get()
+                k = data.xpath("div[contains(@class, 'tech-label')]/span/text()").get().strip()
 
-                legend = "".join(data.xpath("span[@class='label']//text()").getall()).strip()
-
-                if k is None:
-                    k = legend
 
                 if k in skipIfKey:
                     continue
 
-                legends[header][k] = self.cleantxt(legend)
+                legends[header][k] = self.cleantxt(k)
 
                 # Get value, such as "5 GHz"
-                v = "".join(data.xpath("span[@class='value']//text()").getall()).strip()
+                v = "".join(data.xpath("div[contains(@class, 'tech-data')]/span/text()").get()).strip()
 
                 v = self.cleantxt(v)
 
@@ -176,23 +173,23 @@ class BaseSpider(scrapy.Spider):
         has_socket = False
         has_id = False
 
-        if "SocketsSupported" in specs["Package Specifications"]:
+        if "Sockets Supported" in specs["Package Specifications"]:
             has_socket = True
 
-        if "ProcessorNumber" in specs["Essentials"]:
+        if "Processor Number" in specs["Essentials"]:
             has_id = True
 
         if has_id:
             # CPU specs lists number such as Q6600
-            specs["id"] = specs["Essentials"]["ProcessorNumber"]
-            del specs["Essentials"]["ProcessorNumber"]
+            specs["id"] = specs["Essentials"]["Processor Number"]
+            del specs["Essentials"]["Processor Number"]
 
         if not has_socket:
             yield CPUSpecsUnknownItem(specs)
         else:
             # many sockets might be supported
-            sockets = specs["Package Specifications"]["SocketsSupported"].split(", ")
-            del specs["Package Specifications"]["SocketsSupported"]
+            sockets = specs["Package Specifications"]["Sockets Supported"].split(", ")
+            del specs["Package Specifications"]["Sockets Supported"]
 
             for socket in sockets:
                 specs["socket"] = socket
